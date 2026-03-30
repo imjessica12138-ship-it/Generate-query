@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Query 生产工具</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#FAF8F5;--card-bg:#FFF;--text-primary:#1A1A1A;--text-secondary:#6B6560;--text-tertiary:#A09890;--accent:#E8764A;--accent-light:#FFF0EB;--border:#EEEBE7;--shadow-sm:0 1px 3px rgba(120,100,80,.06);--shadow-md:0 4px 16px rgba(120,100,80,.08);--radius-sm:8px;--radius-md:12px;--radius-pill:100px;--font-cn:'Noto Serif SC','PingFang SC','Microsoft YaHei','Hiragino Sans GB',sans-serif}
+html{font-size:16px;-webkit-font-smoothing:antialiased}
+body{background:var(--bg);color:var(--text-primary);font-family:var(--font-cn);min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;top:-200px;right:-200px;width:600px;height:600px;background:radial-gradient(circle,rgba(232,118,74,.06) 0%,transparent 70%);pointer-events:none;z-index:0}
+body::after{content:'';position:fixed;bottom:-300px;left:-200px;width:700px;height:700px;background:radial-gradient(circle,rgba(232,118,74,.04) 0%,transparent 70%);pointer-events:none;z-index:0}
+.container{position:relative;z-index:1;max-width:1060px;margin:0 auto;padding:48px 24px 40px}
+.header{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:32px;padding-bottom:24px;border-bottom:1px solid var(--border)}
+.header-left h1{font-size:1.75rem;font-weight:700;letter-spacing:-.02em;line-height:1.2}
+.header-left h1 span{color:var(--accent)}
+.header-left p{margin-top:6px;font-size:.85rem;color:var(--text-tertiary)}
+.header-right{display:flex;align-items:center;gap:12px}
+.copy-counter{display:flex;align-items:center;gap:6px;padding:6px 14px;background:var(--accent-light);border-radius:var(--radius-pill);font-size:.8rem;color:var(--accent);font-weight:600;white-space:nowrap}
+.copy-counter.bump{animation:counterBump .3s ease}
+@keyframes counterBump{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+.copy-counter svg{width:14px;height:14px;flex-shrink:0}
+.hot-badge{display:flex;align-items:center;gap:5px;padding:5px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:var(--radius-pill);font-size:.75rem;color:#16a34a;font-weight:600;white-space:nowrap;transition:opacity .3s}
+.hot-badge.offline{background:#fef3c7;border-color:#fde68a;color:#b45309}
+.hot-badge::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* Age group tabs */
+.age-section{margin-bottom:20px}
+.age-tabs{display:flex;gap:0;border:1.5px solid var(--border);border-radius:var(--radius-pill);overflow:hidden;width:fit-content}
+.age-tab{padding:10px 28px;font-size:.9rem;font-family:var(--font-cn);color:var(--text-secondary);cursor:pointer;border:none;background:var(--card-bg);font-weight:500;transition:all .25s;user-select:none}
+.age-tab:not(:last-child){border-right:1.5px solid var(--border)}
+.age-tab:hover{color:var(--accent);background:var(--accent-light)}
+.age-tab.active{background:var(--accent);color:#FFF;font-weight:600}
+
+.categories-section{margin-bottom:32px}
+.section-label{font-size:.75rem;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;font-weight:600}
+.categories{display:flex;flex-wrap:wrap;gap:10px}
+.cat-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 20px;border:1.5px solid var(--border);border-radius:var(--radius-pill);background:var(--card-bg);font-size:.88rem;font-family:var(--font-cn);color:var(--text-secondary);cursor:pointer;transition:all .25s cubic-bezier(.4,0,.2,1);font-weight:400;user-select:none}
+.cat-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-light);transform:translateY(-1px);box-shadow:var(--shadow-sm)}
+.cat-btn.active{background:var(--accent);color:#FFF;border-color:var(--accent);box-shadow:0 2px 12px rgba(232,118,74,.25);font-weight:600}
+.cat-btn .cat-icon{font-size:1rem;line-height:1}
+.query-section{min-height:200px}
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 20px;color:var(--text-tertiary);text-align:center}
+.empty-state .empty-icon{font-size:2.5rem;margin-bottom:16px;opacity:.5}
+.empty-state p{font-size:.95rem;line-height:1.6}
+.query-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
+.query-card{position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius-md);cursor:pointer;transition:all .25s cubic-bezier(.4,0,.2,1);opacity:0;transform:translateY(12px);animation:cardIn .4s cubic-bezier(.25,.46,.45,.94) forwards}
+.query-card:hover{border-color:var(--accent);box-shadow:var(--shadow-md);transform:translateY(-2px)}
+.query-card:active{transform:translateY(0);box-shadow:var(--shadow-sm)}
+.query-card.copied{border-color:var(--accent);background:var(--accent-light)}
+.query-card.from-hot::after{content:attr(data-source);position:absolute;top:6px;right:6px;font-size:.6rem;padding:1px 5px;background:#fee2e2;color:#dc2626;border-radius:4px;font-weight:600}
+@keyframes cardIn{to{opacity:1;transform:translateY(0)}}
+.query-text{flex:1;font-size:.92rem;line-height:1.5;color:var(--text-primary);font-weight:400}
+.copy-btn{flex-shrink:0;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:none;background:transparent;border-radius:var(--radius-sm);color:var(--text-tertiary);cursor:pointer;transition:all .2s ease}
+.copy-btn:hover{background:var(--accent-light);color:var(--accent)}
+.copy-btn svg{width:16px;height:16px}
+.refresh-area{display:flex;justify-content:center;margin-top:32px;opacity:0;animation:fadeUp .5s .6s forwards}
+@keyframes fadeUp{to{opacity:1}}
+.refresh-btn{display:inline-flex;align-items:center;gap:8px;padding:12px 32px;border:1.5px solid var(--border);border-radius:var(--radius-pill);background:var(--card-bg);font-size:.9rem;font-family:var(--font-cn);color:var(--text-secondary);cursor:pointer;transition:all .3s cubic-bezier(.4,0,.2,1);font-weight:600}
+.refresh-btn:hover{border-color:var(--accent);color:var(--accent);box-shadow:var(--shadow-md);transform:translateY(-2px)}
+.refresh-btn:active{transform:translateY(0)}
+.refresh-btn svg{width:16px;height:16px;transition:transform .4s ease}
+.refresh-btn:hover svg{transform:rotate(180deg)}
+.toast{position:fixed;bottom:40px;left:50%;transform:translateX(-50%) translateY(20px);padding:10px 24px;background:var(--text-primary);color:#FFF;border-radius:var(--radius-pill);font-size:.82rem;font-family:var(--font-cn);opacity:0;pointer-events:none;transition:all .35s cubic-bezier(.4,0,.2,1);z-index:1000;white-space:nowrap}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.footer{text-align:center;margin-top:56px;padding-top:24px;border-top:1px solid var(--border);font-size:.75rem;color:var(--text-tertiary);letter-spacing:.02em}
+@media(max-width:640px){.container{padding:32px 16px}.header{flex-direction:column;align-items:flex-start;gap:16px}.header-left h1{font-size:1.4rem}.query-grid{grid-template-columns:1fr;gap:10px}.categories{gap:8px}.cat-btn{padding:8px 14px;font-size:.82rem}.age-tab{padding:8px 20px;font-size:.82rem}.header-right{align-self:flex-end}}
+</style>
+</head>
+<body>
+<div class="container">
+  <header class="header">
+    <div class="header-left">
+      <h1>Query <span>生产工具</span></h1>
+      <p>选择人群 · 选择方向 · 实时生成 · 点击复制</p>
+    </div>
+    <div class="header-right">
+      <div class="hot-badge" id="hotBadge" style="display:none"><span id="hotStatus">热榜已同步</span></div>
+      <div class="copy-counter" id="copyCounter">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
+        <span>已复制 <strong id="copyCount">0</strong> 条</span>
+      </div>
+    </div>
+  </header>
+  <section class="age-section">
+    <div class="section-label">人群选择</div>
+    <div class="age-tabs" id="ageTabs">
+      <button class="age-tab active" data-age="young">20 - 30 岁</button>
+      <button class="age-tab" data-age="middle">30 - 50 岁</button>
+    </div>
+  </section>
+  <section class="categories-section">
+    <div class="section-label">方向选择</div>
+    <div class="categories" id="categories"></div>
+  </section>
+  <section class="query-section" id="querySection">
+    <div class="empty-state" id="emptyState"><div class="empty-icon">↑</div><p>选择一个方向，开始生成 Query</p></div>
+    <div class="query-grid" id="queryGrid" style="display:none;"></div>
+    <div class="refresh-area" id="refreshArea" style="display:none;">
+      <button class="refresh-btn" id="refreshBtn" onclick="refreshBatch()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+        换一批（重新生成）
+      </button>
+    </div>
+  </section>
+  <footer class="footer">Query生产工具 · 每次换一批均为全新生成 · 热榜话题自动融入</footer>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   QUERY GENERATION ENGINE — 双人群 × 多方向
+   ============================================================ */
+
+// === AGE GROUP DEFINITIONS ===
+const AGE_GROUPS = {
+young: {
+  label: '20-30岁',
+  categories: [
+    {key:'food',label:'美食探店',icon:'🍜'},
+    {key:'travel',label:'出行旅游',icon:'✈'},
+    {key:'career',label:'职场成长',icon:'💼'},
+    {key:'rent',label:'租房生活',icon:'🏠'},
+    {key:'entertainment',label:'影视娱乐',icon:'🎬'},
+    {key:'tech',label:'数码科技',icon:'📱'},
+    {key:'fashion',label:'穿搭时尚',icon:'👔'},
+    {key:'relationship',label:'情感社交',icon:'💬'},
+    {key:'fitness',label:'健身运动',icon:'🏃'},
+    {key:'finance',label:'理财消费',icon:'💰'},
+    {key:'pets',label:'宠物',icon:'🐾'},
+    {key:'study',label:'考试学习',icon:'📝'},
+    {key:'trending',label:'热点话题',icon:'🔥'},
+  ]
+},
+middle: {
+  label: '30-50岁',
+  categories: [
+    {key:'food',label:'美食探店',icon:'🍜'},
+    {key:'travel',label:'出行旅游',icon:'✈'},
+    {key:'career',label:'职场成长',icon:'💼'},
+    {key:'home',label:'家居生活',icon:'🏠'},
+    {key:'entertainment',label:'影视娱乐',icon:'🎬'},
+    {key:'tech',label:'数码科技',icon:'📱'},
+    {key:'fashion',label:'穿搭时尚',icon:'👔'},
+    {key:'parenting',label:'育儿教育',icon:'📚'},
+    {key:'fitness',label:'健身运动',icon:'🏃'},
+    {key:'relationship',label:'情感社交',icon:'💬'},
+    {key:'finance',label:'理财消费',icon:'💰'},
+    {key:'pets',label:'宠物',icon:'🐾'},
+    {key:'auto',label:'汽车出行',icon:'🚗'},
+    {key:'health',label:'健康养护',icon:'🩺'},
+    {key:'elder',label:'父母养老',icon:'🏡'},
+    {key:'trending',label:'热点话题',icon:'🔥'},
+  ]
+}
+};
+
+/* === TEMPLATE FACTORY ===
+   F.young.key / F.middle.key
+   t: [[pattern, "val1|val2|..."], ...] — {v} slot
+   s: [seed queries]
+*/
+const F = {young:{}, middle:{}};
+
+// ========================
+// 20-30 YOUNG — PLACEHOLDER (will be filled)
+// ========================
+
+/* YOUNG_DATA_START */
+F.young.food = {t:[
+["空气炸锅除了炸薯条还能做什么花样？",""],
+["速食拉面加什么料能好吃到像店里煮的？",""],
+["减脂期间嘴馋了吃什么解馋又不长胖？",""],
+["一个人在家做{v}有什么简单不翻车的教程？","牛排|意面|寿司|咖喱|披萨|蛋糕|三明治"],
+["便利店里有什么隐藏的好吃组合？",""],
+["约会吃饭选{v}还是西餐，怎么不踩雷？","日料|泰餐|火锅|烧烤|私房菜"],
+["奶茶到底哪家最好喝？各家招牌款是什么？",""],
+["预制菜和自己做饭差距大吗？哪些值得买？",""],
+["出租屋没有烤箱只有微波炉能做什么菜？",""],
+["咖啡新手入门喝什么？美式拿铁怎么选？",""],
+["外卖天天吃腻了，有没有15分钟搞定的快手菜？",""],
+["{v}怎么挑？超市那么多牌子看什么指标？","酱油|橄榄油|牛奶|咖啡豆|蜂蜜|巧克力"],
+["室友聚餐AA制，人均{v}块吃什么有氛围？","50|80|100|150"],
+["夏天太热不想做饭，有什么凉拌菜或轻食推荐？",""],
+],s:[
+"大众点评评分到底能不能信？怎么避免踩雷？",
+"网红餐厅排队两小时真的值得去吗？",
+"每天带饭上班微波炉热了不难吃的菜有哪些？",
+"下午茶除了蛋糕奶茶还有什么好选择？",
+"第一次请朋友来家吃饭做什么菜简单又有面子？",
+"早餐到底该吃什么？来不及做的时候怎么凑合？",
+"螺蛳粉为什么让人又爱又恨？哪个牌子最正宗？",
+"自热火锅和方便面哪个性价比高？",
+"一个人吃火锅真的会被投来异样目光吗？",
+"深夜加班想吃宵夜又怕胖，有什么替代方案？",
+]};
+
+F.young.travel = {t:[
+["五一想出去玩但不想看人头，{v}有什么冷门去处？","国内|周边|海岛|古镇|山里"],
+["穷游{v}一周大概花多少？怎么省钱？","东南亚|云南|西藏|日本|成都|重庆"],
+["第一次出国自由行选{v}合适吗？要准备什么？","日本|泰国|韩国|新加坡|越南"],
+["一个人旅行去{v}安全吗？有什么注意事项？","西藏|东南亚|新疆|欧洲|日本"],
+["{v}的citywalk路线有推荐吗？想深度逛不走马观花。","北京|上海|成都|长沙|厦门|南京|杭州|西安|重庆|广州"],
+["特种兵旅游三天打卡{v}个城市，体验到底好不好？","3|4|5"],
+["机票什么时候买最划算？有什么比价技巧？",""],
+["小红书推荐的网红打卡地去了会不会全是滤镜？",""],
+],s:[
+"青旅和民宿怎么选？一个人住安全吗？",
+"毕业旅行去哪比较有意义？预算不多的话。",
+"旅行行李怎么打包才能一个背包搞定？",
+"露营到底好不好玩？第一次去要带什么？",
+"国内有没有适合发呆放空的小城推荐？",
+"拍旅行照有什么简单技巧？怎么避免游客照？",
+"跟朋友一起旅行老是意见不一致怎么协调？",
+"签证怎么办最快？需要准备哪些材料？",
+"旅行途中被坑了怎么维权？买保险有用吗？",
+"坐红眼航班值不值得？怎么把影响降到最低？",
+]};
+
+F.young.career = {t:[
+["面试被问「你的缺点是什么」，怎么答不减分？",""],
+["第一份工作选大公司当螺丝钉还是小公司啥都干？",""],
+["简历投了几十份没回音，是写法问题还是渠道不对？",""],
+["工作才{v}年就想辞职，是太矫情还是真不合适？","1|2|3"],
+["领导总安排职责外的活儿，不好意思拒绝怎么办？",""],
+["副业做{v}靠谱吗？下班后还有精力搞吗？","自媒体|写稿|摆摊|设计外包|短视频|代购|电商"],
+["试用期被辞退有补偿吗？合法权益怎么保障？",""],
+["{v}这个岗位前景怎么样？值得长期发展吗？","新媒体运营|产品经理|UI设计|数据分析|电商运营|内容策划"],
+["同事关系表面和谐暗里较劲，怎么自处不站队？",""],
+["年终总结每次都写成流水账，怎么写让领导看到？",""],
+],s:[
+"应届生选offer到底看薪资还是看平台？",
+"实习天天打杂学不到东西要不要走？",
+"跳槽涨薪30%算什么水平？什么时候跳比较好？",
+"考公考编和进企业到底走哪条路好？",
+"被裁了拿了N+1，该马上找还是先歇一阵？",
+"AI工具越来越强，普通打工人该焦虑吗？",
+"远程办公效率越来越低，怎么保持节奏不摸鱼？",
+"入职新公司发现跟面试说的完全不一样，要走吗？",
+"领导PUA还是正常管理？怎么判断该不该忍？",
+"工作三年了迷茫了不知道想要什么，正常吗？",
+]};
+
+F.young.rent = {t:[
+["第一次租房看房时候重点看什么？怎么避坑？",""],
+["合租室友{v}怎么沟通才不撕破脸？","太吵|不打扫|占用公区|老带人|偷吃东西|空调温度"],
+["租房预算只有{v}块，在一线城市能住成什么样？","1500|2000|2500|3000|3500"],
+["退租的时候房东各种理由扣押金，怎么合法维权？",""],
+["出租屋花{v}块以内能改造到什么程度？","200|500|800|1000"],
+["搬家{v}怎么搞最省事？","东西太多|一个人|跨城|没有车|找公司"],
+["租房合同里{v}这条合理吗？要注意什么？","押二付一|不能养宠|不退押金|涨租条款|转租限制"],
+["整租和合租到底哪个划算？各有什么利弊？",""],
+],s:[
+"中介带看的房子和网上图片差距太大怎么办？",
+"出租屋有蟑螂老鼠怎么彻底解决？",
+"第一次独居安全方面要注意什么？",
+"租房必备的生活好物有哪些？花小钱提升幸福感。",
+"水电费分摊老是有人觉得不公平怎么定规则？",
+"隔断房便宜但合法吗？住着有什么隐患？",
+"房东突然说要卖房让搬走，租客有什么权利？",
+"二房东靠谱吗？跟直接找房东有什么区别？",
+"续租涨了500块，是妥协还是重新找？",
+]};
+
+F.young.entertainment = {t:[
+["最近追什么{v}不踩雷？要有质量不注水的。","悬疑剧|甜宠剧|美剧|韩剧|日剧|职场剧|科幻剧"],
+["豆瓣{v}分以上但很少人知道的电影有哪些？","8|8.5|9"],
+["想入坑{v}从哪部开始？有适合新手的经典推荐吗？","美剧|日剧|纪录片|漫威|悬疑类|英剧"],
+["和朋友一起玩什么{v}好？不要太肝的那种。","手游|桌游|Switch游戏|PC游戏|卡牌游戏"],
+["想培养一个长期爱好，{v}入门门槛高吗？","摄影|吉他|画画|滑板|手账|尤克里里|剪辑|配音"],
+["演唱会抢票老是手慢抢不到，{v}有什么技巧？","大麦|猫眼|微信渠道|捡漏|选座"],
+["一个人周末宅家看什么打发时间？不要太烧脑的。",""],
+["有什么适合通勤路上听的{v}推荐？","播客|有声书|音乐|脱口秀|电台"],
+],s:[
+"B站有什么宝藏UP主是真的在认真做内容的？",
+"剧本杀新手第一次玩选什么本比较好？",
+"脱口秀现场和线上看感觉差多少？值得去吗？",
+"短视频越刷越无聊了，想找点有深度的内容看。",
+"电子阅读器真的能让人多看书吗？还是最后吃灰？",
+"音乐节第一次去要带什么？有什么注意事项？",
+"为什么翻拍的电影永远不如原版好看？",
+"IMAX和普通厅差别大吗？多花几十块值不值？",
+"春节档年年质量参差不齐，怎么判断哪部值得看？",
+]};
+
+F.young.tech = {t:[
+["{v}块预算买手机哪款综合体验最好？","1500|2000|3000|4000|5000"],
+["iPad买回来到底是学习工具还是泡面盖？真实体验说说。",""],
+["{v}和{v2}到底选哪个？纠结很久了。","苹果|安卓;iPad|安卓平板;AirPods|索尼降噪;Mac|Windows"],
+["手机内存总是不够用，除了删东西还有什么办法？",""],
+["AI工具用{v}上班能提升多少效率？具体怎么用？","ChatGPT|Kimi|豆包|DeepSeek|Copilot|通义千问"],
+["短视频想自己拍着玩，用什么设备和软件入门？",""],
+["二手{v}平台买东西靠谱吗？验机看什么？","手机|电脑|iPad|相机"],
+["笔记软件用了好几个都没坚持，{v}哪个适合长期用？","Notion|Obsidian|飞书|语雀|印象笔记|Flomo"],
+["{v}用了两三年卡得不行，是换还是修？","手机|电脑|平板|路由器"],
+],s:[
+"学生买什么笔记本电脑性价比高？不打游戏纯学习。",
+"百元降噪耳机和千元的差距真的很大吗？",
+"WiFi有些房间信号特别差怎么解决？",
+"旧手机淘汰下来不要扔能改造成什么？",
+"云盘iCloud、百度网盘和阿里云盘选哪个？",
+"零基础学Python从哪开始？对非程序员有什么用？",
+"投影仪买来看电影体验好吗？和电视比怎么样？",
+"机械键盘真的比普通键盘手感好很多吗？入门选啥？",
+]};
+
+F.young.fashion = {t:[
+["{v}身材的女生穿什么版型最显瘦？有哪些雷区？","微胖|梨形|小个子|腿粗|肩宽|苹果形"],
+["男生不会搭衣服，预算有限想提升形象从哪入手？",""],
+["{v}穿什么合适？不想用力过猛也不想太随便。","面试|约会|见家长|毕业答辩|参加婚礼|同学聚会"],
+["换季{v}不知道穿什么，尴尬期怎么搭配过渡？","春天|初秋|入冬|早晚温差大"],
+["快时尚{v}穿几次就变形，有没有平价但质量好的推荐？","衣服|裤子|T恤|卫衣|外套"],
+["护肤步骤到底要几步？普通人日常真正需要什么？",""],
+["全身黑白灰穿腻了想加点变化，怎么搭不出错？",""],
+["1688买衣服靠谱吗？有什么选款和避坑技巧？",""],
+],s:[
+"衣柜一堆衣服每天还是觉得没得穿，哪里出了问题？",
+"防晒霜到底要不要涂？到底看什么参数选？",
+"理发的时候怎么跟Tony描述自己想要的效果？",
+"基础款怎么穿出高级感？配饰和细节有什么讲究？",
+"学生党穿搭预算有限怎么买衣服省钱又不土？",
+"首饰戴多了显俗戴少了没存在感，怎么刚刚好？",
+"牛仔裤版型那么多到底根据什么腿型选？",
+"断舍离衣柜怎么下手？什么该扔什么该留？",
+"夏天穿什么既凉快又好看？不想天天短裤T恤。",
+]};
+
+F.young.relationship = {t:[
+["和{v}吵完架冷战了，到底该谁先开口？","男朋友|女朋友|室友|闺蜜|好哥们"],
+["在一起{v}了感觉没有当初的心动了，要分手吗？","半年|一年|两年|三年"],
+["朋友总是{v}，怎么拒绝不伤感情又不委屈自己？","找我借钱|让帮忙|放鸽子|负能量输出|单方面消耗"],
+["父母一直{v}，怎么跟他们有效沟通？","催婚|管太多|拿别人比较|反对你的决定|不理解你的工作"],
+["异地恋到底能不能长久？靠什么维持感情不淡掉？",""],
+["社恐在{v}的场合怎么撑过去不那么难受？","公司团建|聚会|面试|陌生人多|微信群"],
+["舍友关系处不来剩下的日子怎么熬？有什么相处原则？",""],
+["喜欢一个人但不确定对方什么意思，怎么试探？",""],
+],s:[
+"成年之后为什么朋友越来越少了？正常吗？",
+"同事到底能不能交心？职场友谊靠得住吗？",
+"怎么判断自己是真喜欢还是只是习惯了对方？",
+"被PUA了怎么判断？怎么脱离这种关系？",
+"内向和社恐是一回事吗？社恐怎么改善？",
+"分手之后多久能走出来？总忍不住看对方动态。",
+"认识新朋友除了工作和上学还有什么途径？",
+"父母总觉得你的工作不靠谱该怎么解释？",
+]};
+
+F.young.fitness = {t:[
+["跑步和跳绳哪个减脂快？各自适合什么人？",""],
+["健身房第一次去完全不懂，新手第一周做什么？",""],
+["想瘦{v}但怎么练都不掉，是方法不对吗？","肚子|大腿|手臂|脸|背|腰两侧"],
+["减脂期{v}到底能不能碰？偶尔吃一次影响大吗？","奶茶|火锅|零食|碳水|甜品|夜宵"],
+["{v}最近很火到底有没有用？跟传统健身比呢？","帕梅拉|八段锦|刘畊宏操|Keep课程|普拉提|瑜伽"],
+["每天{v}坚持一个月能有什么变化？","跳绳半小时|跑步30分钟|做操20分钟|走一万步"],
+["没有时间去健身房，在家用什么器材效果最好？",""],
+["运动完第二天浑身酸疼是好事还是过量了？",""],
+],s:[
+"减肥到底七分吃三分练还是反过来？比例多少？",
+"蛋白粉不健身的人喝有意义吗？",
+"女生做力量训练真的不会变壮吗？",
+"减肥到了平台期体重卡住不动怎么破？",
+"跑步伤膝盖是真的吗？怎么跑才正确？",
+"晚上运动会影响睡眠吗？什么时间锻炼最好？",
+"游泳减肥效果好吗？不会游泳多久能学会？",
+"体脂率和体重到底看哪个？怎么测准确？",
+]};
+
+F.young.finance = {t:[
+["月薪{v}块在一线城市怎么分配才能存下钱？","5000|6000|8000|10000|12000"],
+["花呗借呗用多了真的会影响征信吗？要关掉吗？",""],
+["年轻人第一份保险买什么？怎么不被业务员忽悠？",""],
+["双十一满减凑单到底省没省钱？怎么判断真打折？",""],
+["基金定投适合新手吗？每月投{v}块能赚多少？","200|500|1000|2000"],
+["刚毕业存款为零正常吗？同龄人大概什么水平？",""],
+["消费降级之后发现生活质量没怎么变，有什么省钱替代品？",""],
+["个税年度汇算清缴到底怎么操作？怎么多退一点？",""],
+],s:[
+"月光族怎么迈出存钱第一步？有什么无痛存钱法？",
+"信用卡到底办不办？有什么好处和坑？",
+"份子钱到底给多少？各地标准差太远了。",
+"年轻人有必要买理财课吗？大部分是不是割韭菜？",
+"每天记账太麻烦了坚持不了，有没有简单的方法？",
+"超前消费到底对不对？分期免息是真的免费吗？",
+"租房vs买房，年轻人到底该怎么规划？",
+"毕业贷款什么时候还完比较合理？要不要提前还？",
+]};
+
+F.young.pets = {t:[
+["上班族朝九晚六养{v}合适吗？哪种不太需要陪？","猫|狗|仓鼠|兔子"],
+["租房养猫房东不让，有什么协商办法或替代方案？",""],
+["{v}一个月各种开销加起来大概多少？养得起吗？","养猫|养狗|养两只猫|养仓鼠|养柯基"],
+["{v}总是{v2}是什么原因？怎么纠正？","猫|狗;半夜跑酷|挑食|咬人|乱抓沙发|随地大小便|应激"],
+["{v}突然{v2}要马上去医院吗？","猫|狗;不吃东西|呕吐|精神萎靡|拉肚子|打喷嚏|一直叫"],
+["猫粮{v}怎么看成分表选？什么指标最重要？","国产|进口|冻干|湿粮|处方粮"],
+["出差一周猫没人管，寄养和上门喂养哪个靠谱？",""],
+],s:[
+"领养代替购买渠道怎么找？流程是什么样的？",
+"家里已经有一只猫了想再养一只能相处吗？",
+"猫咪绝育到底是为它好还是自私？两边说法都有。",
+"宠物保险有必要买吗？万一大病手术费真扛不住。",
+"养了宠物之后衣服上全是毛怎么解决？",
+"新手养什么品种的猫最省心？布偶英短橘猫选啥？",
+"遛狗遇到不拴绳的大型犬怎么保护自己和狗？",
+]};
+
+F.young.study = {t:[
+["考{v}到底有多难？备考多久比较合理？","公务员|研究生|教资|CPA|雅思|托福|司法考试"],
+["考研和考公到底走哪条路？各自利弊是什么？",""],
+["在职{v}现实吗？上班之后时间精力怎么分配？","考研|考公|考证|学英语|提升学历"],
+["零基础学{v}从哪开始？有什么高效的路径？","Python|日语|设计|视频剪辑|数据分析|英语口语"],
+["{v}选什么方向比较好就业？","考研|留学|跨专业|二学位|专升本"],
+["备考期间{v}怎么调整？影响状态太大了。","焦虑|失眠|注意力差|心态崩了|自我怀疑"],
+["二战{v}到底值不值得？再来一年把握大吗？","考研|考公|考编|雅思"],
+["花钱报{v}班真的有用吗？和自学差多少？","考研|考公|英语|编程|设计"],
+],s:[
+"考公上岸率到底有多低？普通人有希望吗？",
+"学历到底重要还是能力重要？985和双非差距大吗？",
+"海归回来找工作真的有优势吗？现在还值得出去吗？",
+"工作几年之后再读研和应届直接考有什么区别？",
+"论文写不出来拖延到截止日怎么自救？",
+"专升本含金量怎么样？考上之后和本科生区别大吗？",
+"图书馆抢不到座怎么找安静的学习场所？",
+"备考期间和朋友社交减少了很多，正常吗？",
+]};
+/* YOUNG_DATA_END */
+
+// ========================
+// 30-50 MIDDLE
+// ========================
+
+/* MIDDLE_DATA_START */
+F.middle.food = {t:[
+["空气炸锅除了基本用法还能做什么花样菜？",""],
+["自己在家做{v}怎么做到接近外面餐厅的水平？","牛排|红烧肉|糖醋排骨|酸菜鱼|佛跳墙|烤鱼|卤牛肉"],
+["家里来客人想整一桌有面子的菜，{v}个人怎么安排菜单？","6|8|10|12"],
+["体检出来{v}，医生说要注意饮食，具体怎么调整？","血脂高|尿酸高|血糖偏高|脂肪肝|胆固醇高|血压高"],
+["孩子挑食不爱吃{v}，有什么做法能让小孩愿意尝试？","蔬菜|鱼|粗粮|牛奶|鸡蛋|水果"],
+["每天给家人做饭翻来覆去就那几样，怎么换点新花样？",""],
+["{v}品牌太多了不知道买哪个，怎么看成分和品质？","酱油|橄榄油|牛奶|蜂蜜|火锅底料|咖啡豆|红酒"],
+["想自己在家做{v}给家人吃，食材怎么挑处理有什么讲究？","海鲜大餐|烤全鱼|清蒸螃蟹|羊蝎子|白切鸡"],
+["工作日中午带饭微波炉热了不难吃的菜有哪些推荐？",""],
+["四十岁之后消化明显不如从前，晚餐吃什么不容易积食？",""],
+["预制菜到底能不能吃？跟自己做的营养差距大不大？",""],
+["过年年夜饭每年都是老三样，想换新花样又不能太冒险。",""],
+],s:[
+"请朋友来家吃饭做什么菜看着排面大但不难做？",
+"周末想在家搞烧烤但住的是楼房有可行方案吗？",
+"人均100块请客吃什么馆子不丢面子？",
+"冰箱里东西总是忘了吃过期，有什么收纳管理好办法？",
+"超市买菜和线上买菜哪个性价比高？",
+"中年人聚餐不想再去火锅烤肉了，有格调但不贵的选择？",
+"孩子上学早餐要营养又要快，一周不重样怎么安排？",
+"减脂期天天水煮菜吃崩溃了，有没有低卡但好吃的替代？",
+]};
+
+F.middle.travel = {t:[
+["{v}想带全家出去玩，去哪人少景好还不赶？","五一|十一|暑假|春节|中秋|清明"],
+["带{v}出去旅行，行程怎么安排照顾所有人体力？","父母|三岁小孩|一家四口|三代同堂|岳父母"],
+["自驾去{v}一直是心愿，假期五六天走哪条线路最合理？","西藏|新疆|内蒙|青海|云南|川西|海南环岛"],
+["从{v}出发周末两天一夜带家人去哪合适？","北京|上海|广州|成都|武汉|杭州|深圳|西安|重庆"],
+["第一次带家人去{v}自由行，签证住宿交通怎么安排省心？","日本|泰国|新加坡|马来西亚|新西兰|澳洲"],
+["一家三四口人均预算{v}块，去哪性价比比较高？","3000|5000|8000|10000"],
+["带{v}岁的孩子出远门需要注意什么？行李怎么精简？","2|3|5|7|10"],
+["父母年纪大了想趁他们还走得动带出去看看，选哪合适？",""],
+["古镇都长得越来越像了，有没有还保留本地生活气息的？",""],
+],s:[
+"民宿踩过好几次雷，怎么从照片和评价判断真实水平？",
+"机票价格波动太大了，什么时段买最便宜？有规律吗？",
+"小红书推的网红打卡地十个有八个是滤镜，怎么避坑？",
+"全家出游住酒店还是民宿？有老人小孩选哪种更合适？",
+"带老人出去旅游节奏不能太紧，有适合慢节奏的目的地吗？",
+"国内哪些博物馆值得专程带孩子去开眼界？",
+"旅行买保险有没有必要？短途国内和出境分别怎么选？",
+]};
+
+F.middle.career = {t:[
+["在公司干了{v}年一直是中层，没什么上升空间了怎么办？","五|六|八|十"],
+["{v}岁想转行，上有老下有小风险太大，有稳妥的过渡方案吗？","35|38|40|42|45"],
+["面试被问「{v}」，怎么回答既真诚又不暴露太多？","你的缺点是什么|为什么从上家离职|你的职业规划|期望薪资|对加班怎么看"],
+["副业做{v}搞了大半年没起色，靠谱的方向到底有哪些？","自媒体|写稿|咨询|线上课程|社群运营|知识付费|短视频"],
+["现在转{v}领域适合中年人吗？门槛和前景怎么样？","AI应用|新能源|跨境电商|大健康|养老产业|职业教育"],
+["带了{v}年团队越做越内耗，是方法不对还是该换方向？","3|5|8"],
+["公司来了新领导风格完全不同，怎么适应不被边缘化？",""],
+["被裁了拿了赔偿金，是马上找工作还是先给自己一段调整时间？",""],
+["在职考{v}对后续发展有帮助吗？含金量怎么样？","PMP|CPA|MBA|一建|法考|高级经济师"],
+["想跟领导提加薪但怕被拒之后关系尴尬，怎么开口比较稳？",""],
+],s:[
+"工作十多年突然觉得没有方向感，中年职业迷茫怎么破？",
+"管理岗越做越累想回去做业务，会被认为是退步吗？",
+"体制内干了多年想出来看看，但怕适应不了市场怎么办？",
+"AI工具普及之后中层管理岗会不会被大量替代？",
+"创业的想法一直有但家庭经济压力大，什么条件下适合试？",
+"职场上那些四五十岁还很有竞争力的人有什么共同点？",
+"年终总结每年都写成流水账，怎么写才让领导看到价值？",
+"突然被安排到不熟悉的岗位，是被边缘化还是新机会？",
+]};
+
+F.middle.home = {t:[
+["住了好几年的{v}平房子想重新规划布局，怎么改动最划算？","60|70|80|90|100|120"],
+["老房子{v}当年没搞好，现在想翻新有什么低成本方案？","厨房|卫生间|水电|地板|墙面|阳台"],
+["{v}到底有没有用？家里人意见不一致，买过的说说真实体验。","扫地机器人|洗碗机|烘干机|净水器|新风系统|智能门锁|洗地机"],
+["家里{v}坏了用了好几年了，修还是换新怎么判断？","油烟机|热水器|空调|洗衣机|冰箱|马桶"],
+["想买{v}的房子，选房的时候要注意什么才不被坑？","改善型|学区|二套|郊区大户型|养老房"],
+["家里{v}的问题困扰很久了，有什么真正管用的方案？","隔音差|采光差|潮湿发霉|收纳不够|管线老化|西晒严重"],
+["中年之后对居住品质要求变高了，{v}值得投入升级吗？","床垫|窗帘|灯光系统|全屋净水|新风|中央空调"],
+["置换房子先卖后买还是先买后卖？资金怎么周转风险小？",""],
+["家里老人要来同住，怎么改造适老化设施不影响正常生活？",""],
+],s:[
+"装修完味道很重，除甲醛方法哪些有科学依据哪些是智商税？",
+"小区停车位到底买还是租？算算长期成本哪个更划算。",
+"全屋智能到底有没有必要搞？哪几样单品真正提升生活质量？",
+"物业费越交越高服务没变化，业主有什么实际可做的？",
+"楼上邻居噪音天天影响休息，法律层面有什么维权手段？",
+"收房验房具体检查什么细节？不想事后发现问题再扯皮。",
+"灯光装完总觉得气氛不对，是色温没选对还是灯具位置问题？",
+]};
+
+F.middle.entertainment = {t:[
+["最近想看{v}类型的剧，时间有限不想踩雷，有质量稳的推荐吗？","悬疑|历史|职场|家庭|科幻|犯罪|年代"],
+["豆瓣{v}分以上但很少人提到的冷门片有哪些？","7.5|8|8.5|9"],
+["想重新拾起{v}作为一个长期爱好，中年人入门有什么建议？","摄影|书法|吉他|钢琴|陶艺|围棋|绘画|烘焙"],
+["想带孩子去看{v}，几岁以上比较合适？体验怎么样？","话剧|音乐剧|音乐会|芭蕾舞|展览|脱口秀"],
+["年纪越大越喜欢看{v}类内容，有什么经典推荐？","历史纪录片|人物传记|社会纪实|商业财经|人文地理|自然科学"],
+["上下班通勤路上想听点{v}，有适合分段听的推荐吗？","有声书|播客|历史节目|商业评论|脱口秀"],
+["{v}平台会员独占内容越来越少了，还值得续费吗？","爱奇艺|优酷|腾讯|B站|Netflix|芒果TV"],
+["周末不想出门想沉浸两三个小时看什么？不要太烧脑的。",""],
+],s:[
+"影视解说账号有哪些是真的有自己观点不只复述剧情的？",
+"IMAX和杜比影院区别到底大不大？多花几十块值不值？",
+"电子阅读器买了真的能多读书吗？还是最后变泡面盖？",
+"短视频刷太多感觉注意力都变差了，想回归长内容怎么开始？",
+"孩子喜欢看的动画片家长陪看能有收获吗？有老少皆宜的吗？",
+"春节档年年质量参差不齐，怎么判断哪部值得去影院看？",
+]};
+
+F.middle.tech = {t:[
+["{v}价位段的手机太多了，中年人日常用选哪款最省心？","3000|4000|5000|6000"],
+["{v}买回来到底能提升效率还是吃灰？过来人说说真实体验。","iPad|MacBook|投影仪|电子阅读器|NAS|安卓平板"],
+["{v}和{v2}到底选哪个？各自优劣在哪？","投影仪|电视;苹果|安卓;轻薄本|游戏本;NAS|网盘;2K显示器|4K显示器"],
+["日常上班用{v}具体能提升什么效率？怎么入门？","ChatGPT|Kimi|豆包|DeepSeek|Copilot|通义千问"],
+["给{v}买什么电子设备合适？既能学习又不容易沉迷。","上小学的孩子|初中生|高中生|上大学的孩子|父母"],
+["家里{v}的问题困扰很久了，有什么靠谱方案？","WiFi信号死角|网速不稳|设备太多卡顿|打印机经常故障|电脑很慢"],
+["{v}用了四五年明显变卡了，是换新还是升级配件？","路由器|电脑|手机|平板|显示器|打印机"],
+["笔记和文件管理一直很混乱，{v}哪个适合普通人长期用？","Notion|飞书|Obsidian|语雀|印象笔记|OneNote"],
+],s:[
+"家里老人用的手机怎么选？字大操作简单又不容易被骚扰。",
+"云存储iCloud百度网盘阿里云盘用下来哪个最靠谱？",
+"全家照片和数据怎么备份最安全？万一硬盘坏了怎么办？",
+"孩子用iPad学习到底有效果吗？怎么控制不偷着玩游戏？",
+"短视频想自己拍记录生活，用什么工具简单又出片？",
+"AI大模型产品现在很多，普通人日常用哪个最实用？",
+"二手手机平台靠谱吗？验机应该重点看哪几项？",
+]};
+
+F.middle.fashion = {t:[
+["{v}身材的人穿什么版型显精神？有什么搭配思路？","微胖|梨形|偏壮|肚子大|圆肩|腿粗"],
+["到了{v}岁穿衣风格怎么转变才有质感不显老气？","35|40|45|50"],
+["{v}的场合穿什么得体又不会显得格格不入？","孩子家长会|商务饭局|同学聚会|公司年会|客户拜访|朋友婚礼"],
+["{v}怎么选？颜色版型面料到底看什么？","大衣|西装|休闲裤|皮鞋|衬衫|风衣|Polo衫|羽绒服"],
+["花{v}块买一件{v2}值不值得？什么价位质量最稳？","500|1000|2000|3000;羽绒服|西装|大衣|皮鞋|风衣|衬衫"],
+["中年{v}日常通勤穿搭怎么做到省心又不显随便？","男性|女性"],
+["换季{v}不知道穿什么，过渡期怎么搭不尴尬？","春天脱羽绒服|秋天还不够冷|初夏温差大|冬天室内外温差"],
+],s:[
+"衣柜一堆衣服每天还是觉得没得穿，是消费方式有问题吗？",
+"中年人穿衣怎么平衡舒适和得体？不想太运动也不想太正式。",
+"人到中年皮肤状态变了，以前适合的颜色现在穿显老怎么调？",
+"护肤步骤看到各种推荐，中年人日常真正需要哪几步就够了？",
+"男人理发不知道怎么跟发型师沟通想要的效果怎么办？",
+"商务出差行李箱怎么装衣服到了不皱又不用带太多件？",
+"中年男性穿搭有没有万能公式？不出错又不费脑子。",
+"断舍离衣柜怎么下手？换季发现一堆不穿又舍不得扔。",
+]};
+
+F.middle.parenting = {t:[
+["孩子{v}岁了{v2}，到底正不正常？需要干预还是等等看？","3|5|7|10|12;注意力总不集中|不爱跟人说话|脾气特别暴|成绩突然下滑|抗拒上学"],
+["{v}到底值不值得投入？实际效果跟宣传差多少？","兴趣班|学区房|编程课|英语启蒙|奥数班|钢琴课|游学"],
+["孩子{v}的问题越来越严重，除了说教还有什么有效方法？","写作业拖拉|沉迷手机|不爱阅读|挑食|跟同学起冲突|不愿意练琴"],
+["小升初选{v}，过来人觉得各自利弊怎么权衡？","公立重点|私立名校|国际学校|家附近学校|寄宿还是走读"],
+["辅导孩子{v}每次都控制不住情绪，有什么更好的方式？","数学|英语|作文|古诗背诵|阅读理解"],
+["青春期孩子{v}，做家长的到底该管还是该放手？","不让看手机就发脾气|什么都不说|早恋了|成绩大幅波动|和同学闹矛盾"],
+["孩子学{v}投入不少钱之后说不想学了，怎么处理？","钢琴|画画|游泳|编程|书法|跆拳道|舞蹈"],
+["现在{v}的竞争压力到底多大？家长应该怎么提前规划？","小升初|中考|高考|留学|艺考|特长生"],
+],s:[
+"孩子近视度数涨得快，除了控制屏幕还有什么有效防控手段？",
+"暑假两个月孩子天天打游戏，怎么安排才有意义又不鸡血？",
+"二胎年龄差大老大觉得被冷落了，怎么平衡关注度？",
+"孩子到了叛逆期什么都对着干，怎么调整沟通方式？",
+"学校作业家长都得陪着做，这种现象合理吗？怎么应对？",
+"班里有霸凌行为老师管不了，家长应该怎么保护孩子？",
+"要不要让孩子出国读书？什么阶段最合适？条件怎么评估？",
+"教育焦虑越来越严重，到底跟着卷还是佛系放养？",
+]};
+
+F.middle.fitness = {t:[
+["{v}和{v2}哪个对中年人更友好？膝盖不好的话呢？","跑步|快走;游泳|骑行;椭圆机|划船机;爬山|慢跑"],
+["中年人想开始{v}但基础太差怕受伤，第一步做什么？","健身|跑步|游泳|瑜伽|力量训练|打球"],
+["体检出来{v}医生说要加强运动，具体应该怎么安排？","血脂高|血糖偏高|脂肪肝|尿酸高|BMI超标|骨密度低"],
+["{v}最近在中年人里特别火，适合什么体质？有效果吗？","八段锦|普拉提|太极|壶铃|瑜伽|拳击操"],
+["久坐{v}酸疼已经好几年了，什么运动能从根本上改善？","腰背|肩颈|膝盖|腰椎|颈椎"],
+["{v}看着挺有意思，中年人零基础第一次需要准备什么？","滑雪|高尔夫|钓鱼|骑行|攀岩|登山|潜水"],
+["膝盖{v}还能做什么运动？不想因为保护膝盖就完全不动。","偶尔疼|爬楼不舒服|半月板有磨损|有点响"],
+["应酬多饭局多的中年人，怎么在不规律的生活里控制体重？",""],
+],s:[
+"中年人做力量训练会不会对关节损伤太大？强度怎么控制？",
+"代谢明显下降了同样运动量效果不如以前，怎么调整？",
+"蛋白粉不怎么练的中年人有必要喝吗？靠饮食够吗？",
+"减到一定体重就卡住了，中年人平台期怎么科学突破？",
+"有氧和无氧到底怎么搭配对改善体质效果最好？",
+"工作忙没时间去健身房，在家有什么高效锻炼方案？",
+"人到四十明显感觉体力不如从前，怎么通过运动恢复？",
+]};
+
+F.middle.relationship = {t:[
+["结婚{v}年了感觉两个人越来越没话说，这种状态正常吗？","5|8|10|15|20"],
+["和{v}在孩子教育问题上意见完全不统一，每次都吵怎么办？","老公|老婆|婆婆|丈母娘|公公"],
+["父母年纪大了{v}，做子女的到底该怎么处理？","固执不听劝|拒绝去医院|被保健品骗|沉迷短视频|和你价值观冲突"],
+["人到中年{v}，是正常的还是该主动改变？","朋友越来越少|不想社交|圈子越来越窄|周末只想一个人待着"],
+["夫妻之间关于{v}到底该怎么谈？很多家庭因为这个闹矛盾。","财务分配|家务分工|带娃责任|赡养父母|买房决策"],
+["中年突然{v}，身边人好像都在经历，正常吗？","觉得人生没意思|对什么都提不起兴趣|容易发脾气|失眠变多|想逃离现在的生活"],
+["和{v}之间关于{v2}的分歧越来越大，到底怎么协调？","另一半|父母;买房|换工作|孩子教育|投资理财|赡养老人"],
+],s:[
+"婆媳关系处理了这么多年，有没有真正管用的相处原则？",
+"夫妻两人收入差距越来越大，家庭地位失衡了怎么调？",
+"兄弟姐妹之间因为赡养父母分工不均产生矛盾怎么谈？",
+"中年人的孤独感越来越强但又不想社交，这种矛盾怎么解？",
+"和公婆同住好几年了矛盾越来越多，怎么设边界不伤感情？",
+"和老同学聚会发现生活层次差别很大聊不到一起了。",
+"中年危机到底是什么？怎么度过这个阶段？",
+]};
+
+F.middle.finance = {t:[
+["家庭月收入{v}，储蓄投资和日常开销怎么分配比较合理？","1.5万|2万|3万|5万|8万"],
+["{v}到底值不值得买？还是纯粹在交智商税？","各种保险|理财课|基金定投|黄金|年金险|信托"],
+["利率都降了这么多了，要不要提前还{v}？怎么算划算？","房贷|车贷|公积金贷|商贷"],
+["孩子以后{v}的费用越来越高，怎么提前规划不手忙脚乱？","上大学|出国留学|上私立学校|买学区房"],
+["{v}和{v2}怎么选？有家庭的人各自利弊是什么？","提前还贷|继续投资;全款|贷款;买房|租房"],
+["现在{v}还能做吗？有家庭的人风险承受力有限怎么稳妥投？","基金定投|股票|黄金|银行理财|债券|REITs"],
+["{v}该怎么配置才能保障全家人？","重疾险|医疗险|意外险|寿险|百万医疗|教育金"],
+["上有老下有小，家庭支柱万一出意外经济怎么兜底？",""],
+],s:[
+"个税专项附加扣除怎么填才能多退一点税？",
+"五险一金缴纳基数调了，对到手工资和退休金有什么影响？",
+"经济环境不明朗，手里的钱放哪比较稳？怎么分配？",
+"年终奖到底怎么算税？扣了好多有没有合法的节税方法？",
+"父母没有退休金，养老费用怎么规划？子女怎么分摊公平？",
+"孩子大学四年总共要花多少钱？现在存来得及吗？",
+"中年人到底需要多少存款才有安全感？不同城市差别大吗？",
+"家庭理财到底谁管钱好？AA和统一管各有什么利弊？",
+]};
+
+F.middle.pets = {t:[
+["家里有{v}岁孩子，适合养{v2}吗？安全和卫生怎么把握？","3|5|7|10;猫|狗|仓鼠|兔子|金鱼|乌龟"],
+["{v}总是{v2}，是什么原因？怎么纠正？","猫|狗;半夜跑酷|挑食|咬人|拆家|乱抓沙发|随地大小便|应激"],
+["养{v}一个月各种开销加起来大概多少？长期养得起吗？","猫|狗|两只猫|大型犬|小型犬"],
+["{v}品种适合有小孩的家庭吗？性格和安全性怎么样？","布偶猫|英短|金毛|拉布拉多|泰迪|柴犬|比熊|柯基"],
+["{v}突然{v2}，是生病了还是正常反应？要去医院吗？","猫|狗;不吃东西|呕吐|拉肚子|掉毛严重|精神萎靡|一直叫"],
+["宠物{v}的费用太高了，有没有省钱但不影响治疗的方式？","看病|手术|长期用药|体检|洗牙"],
+["出差好几天猫没人管，寄养和上门喂养哪个更靠谱？",""],
+],s:[
+"家里有老人和小孩养什么宠物比较安全又不会太闹？",
+"领养代替购买渠道怎么找？流程是什么样的？",
+"宠物保险有必要买吗？万一生大病手术费真扛不住。",
+"养了宠物之后全家旅行就成难题了，怎么解决？",
+"孩子很想养宠物但家长精力有限，养什么最省心？",
+"养宠物之后家里卫生标准明显下降，怎么平衡？",
+]};
+
+F.middle.auto = {t:[
+["预算{v}万买什么家用车最省心？不爱折腾的人怎么选？","10|15|20|25|30|35"],
+["{v}和{v2}到底怎么选？有家庭的人应该优先考虑什么？","油车|电车;SUV|轿车;国产|合资;混动|纯电;七座|五座"],
+["新能源车{v}的问题严重吗？作为家用能接受吗？","续航焦虑|冬天掉电|保值率低|保险贵|充电慢|维修贵"],
+["家里{v}，买什么车最实用？空间和安全性怎么兼顾？","二孩家庭|经常载老人|通勤加周末游|每天接送孩子"],
+["{v}品牌的车质量到底怎么样？有家庭的人买靠谱吗？","比亚迪|特斯拉|理想|小米|问界|极氪|丰田|大众|本田"],
+["车开了{v}年想换新的，旧车置换还是自己卖哪个更划算？","3|5|8|10"],
+["第二辆车主要{v}，买什么定位比较合理？","给老婆上下班|接送孩子|周末全家出行|留给父母开"],
+["小区装不了充电桩物业不批，有什么替代方案？",""],
+],s:[
+"车险年年买到底怎么组合最划算？哪些必买哪些可以省？",
+"家里两辆车保险保养加起来一年花不少，怎么优化支出？",
+"混动车和纯电车家里没固定充电位的话到底选哪个？",
+"高速带家人跑长途安全方面要注意什么？",
+"停车总是被剐蹭，走保险还是自己修哪个更划算？",
+"旧车卖给二手商还是自己挂平台？价格差多少？",
+]};
+
+F.middle.health = {t:[
+["体检报告上{v}偏高，到底严不严重？需要吃药吗？","转氨酶|甘油三酯|尿酸|血糖|胆固醇|同型半胱氨酸"],
+["每年体检{v}到底有没有必要做？哪些项目真正有价值？","CT|肿瘤标志物|肠镜|胃镜|心脏彩超|颈动脉彩超|基因检测"],
+["人到中年{v}越来越明显，是正常衰老还是该去看医生？","失眠|记忆力下降|腰背疼|膝盖疼|容易疲劳|视力模糊|掉头发"],
+["{v}查出来结节，医生说定期观察，到底要不要紧？会癌变吗？","甲状腺|肺部|乳腺|肝脏"],
+["颈椎腰椎{v}困扰好几年了，除了手术还有什么治疗方案？","突出|膨出|劳损|曲度变直|骨质增生"],
+["{v}到底是智商税还是真的有用？中年人有必要吃吗？","鱼油|益生菌|辅酶Q10|褪黑素|叶黄素|钙片|维生素|胶原蛋白"],
+["家人得了{v}，想了解治疗方案和预后到底怎么样。","高血压|糖尿病|甲亢|痛风|脂肪肝|腰椎间盘突出|慢性胃炎"],
+["牙齿{v}的问题一直拖着没处理，是现在治还是再等？","松动|牙龈出血|智齿|缺了一颗|敏感|龋齿"],
+],s:[
+"脂肪肝体检说轻度不用吃药，但心里不放心怎么改善？",
+"年过四十代谢明显变慢，体重上去就下不来怎么办？",
+"长期对着电脑眼睛干涩疲劳，有什么护眼方法有科学依据？",
+"心理压力大但觉得去看心理医生小题大做了，怎么自我调节？",
+"体检报告看不懂每次拿到都很焦虑，怎么初步判断？",
+"腰疼到底是腰肌劳损还是腰椎问题？怎么判断要不要拍片？",
+"过了四十岁补钙到底有没有必要？怎么补才科学？",
+"中年人体检频率和项目怎么安排最合理？",
+]};
+
+F.middle.elder = {t:[
+["父母{v}岁了{v2}，做子女的该怎么引导？","65|70|75|80;不愿体检|拒绝用智能手机|不听医嘱|总买保健品|舍不得花钱|吃剩饭"],
+["老人{v}越来越明显了，什么情况下需要请护工或考虑养老院？","记忆力衰退|腿脚不便|独居安全隐患|慢性病管理难|生活不能完全自理"],
+["父母{v}，做子女的有什么实际能做的？","退休后闲得慌|心情总是不好|身边朋友越来越少|和老伴关系差|不适应新环境"],
+["{v}哪种方式最适合自家情况？各自利弊是什么？","居家养老|社区养老|养老院|跟子女同住|请住家保姆|候鸟式养老"],
+["给父母买{v}怎么选？老人用着方便又实用的。","手机|血压计|按摩椅|助听器|智能手环|足浴盆|护理床"],
+["父母{v}该怎么处理？兄弟姐妹之间怎么分工比较公平？","生了大病住院|需要长期照护|不能自理了|需要有人陪住"],
+["老人在家{v}怎么提前预防和应对？","摔倒|忘记关火|被电信诈骗|误信偏方|乱吃药|走失"],
+["想给父母安排{v}，怎么选择比较靠谱不被坑？","全面体检|旅游|保险|适老化改造|养老保险"],
+],s:[
+"父母年纪大了坚持不肯跟子女住也不去养老院，独居安全怎么保障？",
+"老人沉迷短视频购物买了一堆没用的东西，怎么劝不伤自尊？",
+"退休金少的父母子女怎么补贴才不让他们觉得是施舍？",
+"过年回家发现父母明显老了很多但总说没事，怎么观察健康问题？",
+"给父母请保姆怕他们被虐待，怎么筛选靠谱的？什么渠道？",
+"异地工作离父母远平时只能打电话，还能怎么尽孝？",
+"父母总舍不得扔旧东西家里堆满了，怎么沟通让他们接受整理？",
+"农村的父母养老条件有限，城里子女怎么远程安排？",
+]};
+/* MIDDLE_DATA_END */
+
+// Trending is shared — only from API hot topics
+F.young.trending = {t:[], s:[]};
+F.middle.trending = {t:[], s:[]};
+
+// === HOT TOPIC INTEGRATION ===
+let hotTopics = [];
+const HOT_TEMPLATES = [
+  "最近都在聊{v}，到底怎么回事？",
+  "{v}突然上热搜了，有人能客观分析吗？",
+  "朋友圈都在转{v}，跟普通人有关系吗？",
+  "关于{v}，到底是什么情况？",
+  "{v}热度很高，对日常生活有影响吗？",
+  "{v}到底是怎么回事？求靠谱解读。",
+  "刷到好多人讨论{v}，有靠谱信息源吗？",
+  "身边人都在关注{v}，普通人要做什么准备吗？",
+];
+
+async function fetchHotTopics() {
+  const badge = document.getElementById('hotBadge');
+  const status = document.getElementById('hotStatus');
+  badge.style.display = 'flex';
+  status.textContent = '正在同步热榜...';
+  const apis = [
+    'https://api.vvhan.com/api/hotlist/wbHot',
+    'https://api.vvhan.com/api/hotlist/douyinHot',
+    'https://api.vvhan.com/api/hotlist/baiduRD',
+  ];
+  for (const api of apis) {
+    try {
+      const proxy = 'https://api.allorigins.win/get?url=' + encodeURIComponent(api);
+      const resp = await fetch(proxy, {signal: AbortSignal.timeout(5000)});
+      const json = await resp.json();
+      const data = JSON.parse(json.contents);
+      if (data && data.data && Array.isArray(data.data)) {
+        const items = data.data.slice(0, 20).map(d => ({
+          title: (d.title || d.name || '').replace(/#/g,'').trim(),
+          source: api.includes('wb') ? '微博' : api.includes('douyin') ? '抖音' : '百度'
+        })).filter(d => d.title.length > 2 && d.title.length < 30);
+        hotTopics = hotTopics.concat(items);
+      }
+    } catch(e) {}
+  }
+  const seen = new Set();
+  hotTopics = hotTopics.filter(h => { if (seen.has(h.title)) return false; seen.add(h.title); return true; });
+  if (hotTopics.length > 0) {
+    status.textContent = `热榜已同步 ${hotTopics.length} 条`;
+    badge.classList.remove('offline');
+  } else {
+    status.textContent = '热榜离线 · 模板生成中';
+    badge.classList.add('offline');
+  }
+}
+
+// === GENERATION ENGINE ===
+const generatedHistory = new Set();
+
+function fillTemplate(pattern, values) {
+  if (!values || values === '') return pattern; // static query, no slot to fill
+  if (pattern.includes('{v2}')) {
+    const parts = values.split(';');
+    const pair = parts[Math.floor(Math.random() * parts.length)];
+    if (pair.includes('|')) {
+      const vals = pair.split('|');
+      return pattern.replace('{v}', vals[0]).replace('{v2}', vals[1] || vals[0]);
+    }
+    return pattern.replace('{v}', pair).replace('{v2}', pair);
+  }
+  const vals = values.split('|');
+  return pattern.replace('{v}', vals[Math.floor(Math.random() * vals.length)]);
+}
+
+function generateQueries(ageGroup, category, count = 12) {
+  if (category === 'trending') return generateTrendingQueries(count);
+  const factory = F[ageGroup] && F[ageGroup][category];
+  if (!factory) return [];
+  const results = [], localSeen = new Set();
+  let attempts = 0;
+  const maxAttempts = count * 10;
+  const templateCount = Math.ceil(count * 0.7);
+  const seedCount = Math.ceil(count * 0.2);
+  const hotCount = count - templateCount - seedCount;
+
+  while (results.length < templateCount && attempts < maxAttempts) {
+    attempts++;
+    const tmpl = factory.t[Math.floor(Math.random() * factory.t.length)];
+    const q = fillTemplate(tmpl[0], tmpl[1]);
+    if (q && !localSeen.has(q) && !generatedHistory.has(q)) { localSeen.add(q); results.push({text: q, hot: false}); }
+  }
+  const seeds = [...factory.s].sort(() => Math.random() - 0.5);
+  for (let i = 0; i < Math.min(seedCount, seeds.length); i++) {
+    if (!localSeen.has(seeds[i])) { localSeen.add(seeds[i]); results.push({text: seeds[i], hot: false}); }
+  }
+  if (hotTopics.length > 0 && hotCount > 0) {
+    const sh = [...hotTopics].sort(() => Math.random() - 0.5);
+    for (let i = 0; i < Math.min(hotCount, sh.length); i++) {
+      const tmpl = HOT_TEMPLATES[Math.floor(Math.random() * HOT_TEMPLATES.length)];
+      const q = tmpl.replace('{v}', sh[i].title);
+      if (!localSeen.has(q)) { localSeen.add(q); results.push({text: q, hot: true, source: sh[i].source}); }
+    }
+  }
+  while (results.length < count && attempts < maxAttempts * 2) {
+    attempts++;
+    const tmpl = factory.t[Math.floor(Math.random() * factory.t.length)];
+    const q = fillTemplate(tmpl[0], tmpl[1]);
+    if (q && !localSeen.has(q) && !generatedHistory.has(q)) { localSeen.add(q); results.push({text: q, hot: false}); }
+  }
+  results.forEach(r => generatedHistory.add(r.text));
+  if (generatedHistory.size > 200) {
+    const arr = [...generatedHistory]; arr.splice(0, arr.length - 200);
+    generatedHistory.clear(); arr.forEach(a => generatedHistory.add(a));
+  }
+  return results.sort(() => Math.random() - 0.5).slice(0, count);
+}
+
+function generateTrendingQueries(count) {
+  if (hotTopics.length === 0) return [{text: '热榜数据正在加载中，请稍后点击换一批……', hot: false}];
+  const results = [], localSeen = new Set();
+  const shuffled = [...hotTopics].sort(() => Math.random() - 0.5);
+  for (let i = 0; i < shuffled.length && results.length < count; i++) {
+    const t = shuffled[i].title;
+    if (!localSeen.has(t) && !generatedHistory.has(t)) {
+      localSeen.add(t); results.push({text: t, hot: true, source: shuffled[i].source});
+    }
+  }
+  results.forEach(r => generatedHistory.add(r.text));
+  if (generatedHistory.size > 200) {
+    const arr = [...generatedHistory]; arr.splice(0, arr.length - 200);
+    generatedHistory.clear(); arr.forEach(a => generatedHistory.add(a));
+  }
+  return results;
+}
+
+// === UI ===
+let currentAge = 'young';
+let currentCategory = null;
+let copyCount = 0;
+let toastTimer = null;
+
+// Age tabs
+document.querySelectorAll('.age-tab').forEach(tab => {
+  tab.onclick = () => {
+    currentAge = tab.dataset.age;
+    currentCategory = null;
+    document.querySelectorAll('.age-tab').forEach(t => t.classList.toggle('active', t === tab));
+    renderCategories();
+    document.getElementById('emptyState').style.display = 'flex';
+    document.getElementById('queryGrid').style.display = 'none';
+    document.getElementById('refreshArea').style.display = 'none';
+  };
+});
+
+function renderCategories() {
+  const c = document.getElementById('categories');
+  c.innerHTML = '';
+  const cats = AGE_GROUPS[currentAge].categories;
+  cats.forEach(cat => {
+    const btn = document.createElement('button');
+    btn.className = 'cat-btn';
+    btn.dataset.key = cat.key;
+    btn.innerHTML = `<span class="cat-icon">${cat.icon}</span>${cat.label}`;
+    btn.onclick = () => selectCategory(cat.key);
+    c.appendChild(btn);
+  });
+}
+
+function selectCategory(key) {
+  currentCategory = key;
+  document.querySelectorAll('.cat-btn').forEach(b => b.classList.toggle('active', b.dataset.key === key));
+  renderBatch();
+}
+
+function renderBatch() {
+  const queries = generateQueries(currentAge, currentCategory, 12);
+  const grid = document.getElementById('queryGrid');
+  const empty = document.getElementById('emptyState');
+  const refreshArea = document.getElementById('refreshArea');
+  empty.style.display = 'none';
+  grid.style.display = 'grid';
+  refreshArea.style.display = 'flex';
+  grid.innerHTML = '';
+  queries.forEach((q, i) => {
+    const card = document.createElement('div');
+    card.className = 'query-card' + (q.hot ? ' from-hot' : '');
+    card.setAttribute('data-source', q.source || '热');
+    card.style.animationDelay = `${i * 0.04}s`;
+    const escaped = q.text.replace(/'/g, "\\'");
+    card.innerHTML = `<span class="query-text">${q.text}</span>
+      <button class="copy-btn" title="复制" onclick="event.stopPropagation();copyQuery(this,'${escaped}')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+      </button>`;
+    card.onclick = () => copyQuery(card.querySelector('.copy-btn'), q.text);
+    grid.appendChild(card);
+  });
+  refreshArea.style.animation = 'none'; refreshArea.offsetHeight; refreshArea.style.animation = '';
+}
+
+function refreshBatch() {
+  const btn = document.getElementById('refreshBtn');
+  btn.querySelector('svg').style.transition = 'transform 0.5s ease';
+  btn.querySelector('svg').style.transform = `rotate(${Math.random()*720+360}deg)`;
+  setTimeout(() => { btn.querySelector('svg').style.transform = ''; }, 600);
+  renderBatch();
+}
+
+function copyQuery(btnEl, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    copyCount++;
+    document.getElementById('copyCount').textContent = copyCount;
+    const counter = document.getElementById('copyCounter');
+    counter.classList.remove('bump'); void counter.offsetWidth; counter.classList.add('bump');
+    const card = btnEl.closest('.query-card');
+    card.classList.add('copied'); setTimeout(() => card.classList.remove('copied'), 600);
+    showToast(`已复制「${text.length > 18 ? text.slice(0,18)+'…' : text}」`);
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    copyCount++; document.getElementById('copyCount').textContent = copyCount;
+    showToast('已复制');
+  });
+}
+
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg; toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 1600);
+}
+
+// === INIT ===
+renderCategories();
+fetchHotTopics();
+</script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"75124c326cb447fe934cde04713ae013","r":1,"server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
